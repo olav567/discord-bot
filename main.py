@@ -1,10 +1,29 @@
+print("Starting bot...")
+
 import discord
 from discord.ext import commands, tasks
-from discord.utils import get
 from discord import app_commands
 import datetime
 import os
+from flask import Flask
+import threading
 
+# --- Flask app voor keep-alive en open poort ---
+app = Flask('')
+
+@app.route('/')
+def home():
+    return "Bot is running!"
+
+def run_webserver():
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+
+def start_webserver():
+    t = threading.Thread(target=run_webserver)
+    t.start()
+
+# --- Discord bot setup ---
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
@@ -186,5 +205,8 @@ async def embed_command(interaction: discord.Interaction, titel: str, beschrijvi
     except ValueError:
         await interaction.response.send_message("Ongeldige kleurcode. Gebruik bijvoorbeeld: #ff0000", ephemeral=True)
 
-bot.run(os.getenv("DISCORD_TOKEN"))
+# --- Start Flask webserver om poort open te houden ---
+start_webserver()
 
+# --- Start Discord bot ---
+bot.run(os.getenv("DISCORD_TOKEN"))
