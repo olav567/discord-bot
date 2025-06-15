@@ -8,6 +8,7 @@ import os
 import asyncio
 from flask import Flask
 import threading
+import io
 
 # --- Flask app voor keep-alive en open poort ---
 app = Flask('')
@@ -81,6 +82,14 @@ async def on_member_join(member):
         embed.set_footer(text="Veel plezier!", icon_url=bot.user.avatar.url if bot.user.avatar else None)
         await channel.send(embed=embed)
 
+@bot.event
+async def on_message(message):
+    if message.mention_everyone or any(role.mention in message.content for role in message.role_mentions):
+        if "evorony" in message.content.lower():
+            await message.delete()
+            await message.channel.send(f"{message.author.mention}, je mag deze persoon niet zomaar mentionen.", delete_after=5)
+    await bot.process_commands(message)
+
 @tasks.loop(minutes=5)
 async def update_server_status():
     guild = bot.get_guild(GUILD_ID)
@@ -111,11 +120,23 @@ async def ticket_command(interaction: discord.Interaction):
         async def klacht_button(self, interaction: discord.Interaction, button: discord.ui.Button):
             await create_ticket(interaction, "Klacht")
 
-    await interaction.response.send_message(
-        "Tickets aanmaken — klik op een knop hieronder:",
-        view=TicketView(),
-        ephemeral=True
-    )
+    await interaction.response.send_message("Tickets aanmaken — klik op een knop hieronder:", view=TicketView(), ephemeral=True)
+
+async def create_ticket(interaction: discord.Interaction, onderwerp: str):
+    guild = interaction.guild
+    category = discord.utils.get(guild.categories, name=TICKET_CATEGORY_NAME)
+    if not category:
+        category = await guild.create_category(TICKET_CATEGORY_NAME)
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+        interaction.user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        guild.get_role(STAFF_ROLE_ID): discord.PermissionOverwrite(read_messages=True, send_messages=True)
+    }
+    channel = await guild.create_text_channel(f"ticket-{interaction.user.name}", category=category, overwrites=overwrites)
+
+    await channel.send(f"{interaction.user.mention}, welkom bij je {onderwerp}-ticket! Een stafflid helpt je zo.")
+    await interaction.response.send_message(f"Ticket aangemaakt: {channel.mention}", ephemeral=True)
 
 @tree.command(name="verify", description="Stuur een verify knop", guild=discord.Object(id=GUILD_ID))
 async def verify_command(interaction: discord.Interaction):
@@ -159,20 +180,23 @@ async def sluit_command(interaction: discord.Interaction):
 
     await interaction.response.send_message("Ticket wordt gesloten in 5 seconden... ⏳", ephemeral=True)
 
-    embed = discord.Embed(
-        title="Ticket gesloten",
-        description=f"{channel.name} is gesloten door {interaction.user.mention}.",
-        color=discord.Color.red(),
-        timestamp=datetime.datetime.utcnow()
-    )
+    transcript = io.StringIO()
+    async for msg in channel.history(limit=None, oldest_first=True):
+        tijd = msg.created_at.strftime("[%Y-%m-%d %H:%M:%S]")
+        transcript.write(f"{tijd} {msg.author.display_name}: {msg.content}\n")
+    transcript.seek(0)
+
+    transcript_file = discord.File(transcript, filename=f"transcript-{channel.name}.txt")
+
     if log_channel:
-        await log_channel.send(embed=embed)
+        await log_channel.send(f"Transcript van {channel.name}:", file=transcript_file)
 
     await asyncio.sleep(5)
     await channel.delete()
 
-# --- Start webserver (Render vereist open poort) ---
+# Moderatiecommando’s: warn, ban, kick, clear zijn al aanwezig hierboven...
+# Start webserver (Render vereist open poort)
 start_webserver()
 
-# --- Start Discord bot ---
+# Start bot
 bot.run(os.getenv("DISCORD_TOKEN"))
