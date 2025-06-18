@@ -144,6 +144,21 @@ async def update_server_status():
 
 # --- Commands ---
 
+# Toevoegen van /embed command
+@tree.command(name="embed", description="Stuur een embed bericht via de bot", guild=discord.Object(id=GUILD_ID))
+@app_commands.describe(titel="Titel van het bericht", beschrijving="Beschrijving van het bericht", kleur="Kleur in hex (bijv. #00ff00)")
+@commands.has_permissions(manage_messages=True)
+async def embed_command(interaction: discord.Interaction, titel: str, beschrijving: str, kleur: str = "#2F3136"):
+    try:
+        kleur_int = int(kleur.strip("#"), 16)
+    except ValueError:
+        kleur_int = 0x2F3136  # default embed kleur
+
+    embed = discord.Embed(title=titel, description=beschrijving, color=kleur_int)
+    embed.set_footer(text=f"Verstuurd door {interaction.user.display_name}", icon_url=interaction.user.display_avatar.url)
+    await interaction.channel.send(embed=embed)
+    await interaction.response.send_message("Embed verzonden!", ephemeral=True)
+
 # /verify command
 @tree.command(name="verify", description="Stuur een verify knop", guild=discord.Object(id=GUILD_ID))
 async def verify_command(interaction: discord.Interaction):
